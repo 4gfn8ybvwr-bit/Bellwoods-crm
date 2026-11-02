@@ -1,0 +1,15 @@
+services:
+  crm:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: file:/data/bellwoods.db
+      SESSION_SECRET: change-this-before-any-real-use
+    volumes:
+      - crmdata:/data
+      - uploads:/app/data/uploads
+
+volumes:
+  crmdata:
+  uploads:

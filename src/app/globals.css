@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-paper text-ink font-sans;
+  }
+  h1, h2, .serif {
+    font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  }
+  input, select, textarea, button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line bg-card px-3 py-2 text-sm font-semibold text-ink shadow-sm transition hover:bg-stone-50 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-copper bg-copper text-white hover:bg-copper-dark;
+  }
+  .btn-dark {
+    @apply border-forest bg-forest text-white hover:bg-moss;
+  }
+  .btn-danger {
+    @apply border-red-900 bg-white text-red-900 hover:bg-red-50;
+  }
+  .btn-small {
+    @apply px-2 py-1 text-xs;
+  }
+  .field {
+    @apply flex flex-col gap-1 text-sm;
+  }
+  .field span {
+    @apply font-semibold text-stone-700;
+  }
+  .input, .select, .textarea {
+    @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm outline-none ring-copper focus:ring-2;
+  }
+  .textarea {
+    @apply min-h-24;
+  }
+  .card {
+    @apply rounded-xl border border-line bg-card shadow-card;
+  }
+  .table-wrap {
+    @apply overflow-x-auto;
+  }
+  table.data {
+    @apply w-full border-collapse text-sm;
+  }
+  table.data th {
+    @apply border-b border-line px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-stone-500;
+  }
+  table.data td {
+    @apply border-b border-stone-100 px-3 py-2 align-top;
+  }
+  table.data tr:hover td {
+    @apply bg-stone-50/80;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
+  }
+  .form-error {
+    @apply rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900;
+  }
+  .form-ok, .notice {
+    @apply rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950;
+  }
+  .warn {
+    @apply rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950;
+  }
+}
+
+.stage-bar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(88px, 1fr);
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.stage-bar a, .stage-bar span {
+  display: block;
+  min-height: 52px;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+.kanban {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  align-items: flex-start;
+}
+.kanban-col {
+  width: 250px;
+  flex: 0 0 250px;
+}
