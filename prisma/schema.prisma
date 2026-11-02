@@ -1,0 +1,518 @@
+// Bellwoods CRM core. SQLite for a simple local/single-server install.
+// To use Postgres, change provider to "postgresql" and point DATABASE_URL
+// at the database. Avoid raw SQL so the schema stays portable.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedEnquiries Enquiry[]     @relation("EnquiryAssignee")
+  appointments      Appointment[]
+  tasksAssigned     Task[]        @relation("TaskAssignee")
+  tasksCreated      Task[]        @relation("TaskCreator")
+  activities        Activity[]
+  documents         Document[]
+  apiKeysCreated    ApiKey[]
+  quotes            Quote[]
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  prefix      String
+  keyHash     String    @unique
+  scopes      String
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  activities  Activity[]
+
+  @@index([prefix])
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  type        String
+  name        String
+  companyName String   @default("")
+  email       String   @default("")
+  phone       String   @default("")
+  notes       String   @default("")
+  lastUsedAt  DateTime?
+  portalEnabled Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  addresses    Address[]
+  contacts     Contact[]
+  enquiries    Enquiry[]
+  quotes       Quote[]
+  contracts    Contract[]
+  appointments Appointment[]
+  emails       InboundEmail[]
+
+  @@index([type])
+  @@index([name])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label      String   @default("Home")
+  line1      String
+  line2      String   @default("")
+  city       String
+  county     String   @default("")
+  postcode   String
+  isPrimary  Boolean  @default(false)
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name       String
+  email      String   @default("")
+  phone      String   @default("")
+  role       String   @default("")
+  isPrimary  Boolean  @default(false)
+  portalEnabled Boolean @default(false)
+  portalPasswordHash String @default("")
+}
+
+model Enquiry {
+  id              String    @id @default(cuid())
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  source          String
+  productInterest String
+  status          String    @default("OPEN")
+  channel         String    @default("BELLWOODS")
+  assignedToId    String?
+  assignedTo      User?     @relation("EnquiryAssignee", fields: [assignedToId], references: [id])
+  notes           String    @default("")
+  contractId      String?   @unique
+  contract        Contract? @relation(fields: [contractId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  quotes       Quote[]
+  appointments Appointment[]
+  emails       InboundEmail[]
+
+  @@index([status])
+  @@index([channel])
+}
+
+model Appointment {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  enquiryId  String?
+  enquiry    Enquiry?  @relation(fields: [enquiryId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  type       String
+  title      String
+  startsAt   DateTime
+  endsAt     DateTime
+  location   String    @default("")
+  notes      String    @default("")
+  createdAt  DateTime  @default(now())
+
+  @@index([startsAt])
+  @@index([contractId])
+}
+
+model Quote {
+  id          String    @id @default(cuid())
+  number      String    @unique
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  enquiryId   String?
+  enquiry     Enquiry?  @relation(fields: [enquiryId], references: [id])
+  status      String    @default("DRAFT")
+  channel     String    @default("BELLWOODS")
+  validUntil  DateTime?
+  notes       String    @default("")
+  netPence    Int       @default(0)
+  vatPence    Int       @default(0)
+  grossPence  Int       @default(0)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines    QuoteLine[]
+  contract Contract?
+
+  @@index([status])
+}
+
+model QuoteLine {
+  id             String @id @default(cuid())
+  quoteId        String
+  quote          Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productType    String
+  description    String
+  widthMm        Int?
+  heightMm       Int?
+  specification  String @default("")
+  quantity       Int    @default(1)
+  unitPricePence Int
+  netPence       Int
+  sortOrder      Int    @default(0)
+}
+
+model Stage {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  sortOrder Int
+  colour    String     @default("#234237")
+  contracts Contract[]
+}
+
+model Sequence {
+  id   String @id
+  next Int
+}
+
+model Contract {
+  id              String    @id @default(cuid())
+  number          String    @unique
+  type            String
+  channel         String    @default("BELLWOODS")
+  jobType         String    @default("")
+  customerReference String  @default("")
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  quoteId         String?   @unique
+  quote           Quote?    @relation(fields: [quoteId], references: [id])
+  stageId         String
+  stage           Stage     @relation(fields: [stageId], references: [id])
+  siteAddress     String    @default("")
+  salesValuePence Int       @default(0)
+  depositPercent  Int       @default(25)
+  depositSkipped  Boolean   @default(false)
+  surveyUploaded  Boolean   @default(false)
+  surveyWaived    Boolean   @default(false)
+  paymentDueDate  DateTime?
+  paymentDueSource String   @default("UNSET")
+  fittersNeeded   Int       @default(2)
+  fittersNotes    String    @default("")
+  externalWorks   String    @default("")
+  notes           String    @default("")
+  soldAt          DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  enquiry          Enquiry?
+  lines            ContractLine[]
+  tasks            Task[]
+  activities       Activity[]
+  documents        Document[]
+  surveyOpenings   SurveyOpening[]
+  surveyMaterials  SurveyMaterial[]
+  purchaseOrders   PurchaseOrder[]
+  customerInvoices CustomerInvoice[]
+  labourEntries    LabourEntry[]
+  appointments     Appointment[]
+  emails           InboundEmail[]
+
+  @@index([type])
+  @@index([channel])
+  @@index([stageId])
+  @@index([completedAt])
+}
+
+model ContractLine {
+  id             String   @id @default(cuid())
+  contractId     String
+  contract       Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  productType    String
+  description    String
+  widthMm        Int?
+  heightMm       Int?
+  specification  String   @default("")
+  quantity       Int      @default(1)
+  unitPricePence Int
+  netPence       Int
+  sortOrder      Int      @default(0)
+}
+
+model SurveyOpening {
+  id            String   @id @default(cuid())
+  contractId    String
+  contract      Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  location      String
+  productType   String
+  widthMm       Int
+  heightMm      Int
+  specification String   @default("")
+  notes         String   @default("")
+}
+
+model SurveyMaterial {
+  id          String   @id @default(cuid())
+  contractId  String
+  contract    Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  description String
+  quantity    String
+  unit        String   @default("")
+}
+
+model Task {
+  id           String    @id @default(cuid())
+  contractId   String
+  contract     Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  title        String
+  notes        String    @default("")
+  assignedToId String?
+  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  dueDate      DateTime?
+  completedAt  DateTime?
+  createdById  String?
+  createdBy    User?     @relation("TaskCreator", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+
+  @@index([dueDate])
+}
+
+model Activity {
+  id         String    @id @default(cuid())
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  entityType String
+  entityId   String
+  kind       String
+  body       String
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  apiKeyId   String?
+  apiKey     ApiKey?   @relation(fields: [apiKeyId], references: [id])
+  createdAt  DateTime  @default(now())
+
+  @@index([contractId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  contractId   String
+  contract     Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  kind         String   @default("OTHER")
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+model Supplier {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @default("")
+  phone      String   @default("")
+  accountRef String   @default("")
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id                String    @id @default(cuid())
+  number            String    @unique
+  contractId        String
+  contract          Contract  @relation(fields: [contractId], references: [id])
+  supplierId        String
+  supplier          Supplier  @relation(fields: [supplierId], references: [id])
+  status            String    @default("DRAFT")
+  supplierReference String    @default("")
+  netPence          Int       @default(0)
+  remake            Boolean   @default(false)
+  remakeReason      String    @default("")
+  notes             String    @default("")
+  orderedAt         DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  lines    PurchaseOrderLine[]
+  invoices SupplierInvoice[]
+
+  @@index([contractId])
+  @@index([status])
+}
+
+model PurchaseOrderLine {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  description     String
+  quantity        Int           @default(1)
+  unitPricePence  Int
+  netPence        Int
+  sortOrder       Int           @default(0)
+}
+
+model SupplierInvoice {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  invoiceNumber   String
+  invoiceDate     DateTime
+  netPence        Int
+  vatPence        Int
+  grossPence      Int
+  nominalCode     String        @default("5000")
+  status          String
+  variancePence   Int           @default(0)
+  reviewNote      String        @default("")
+  reviewedAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([status])
+  @@index([invoiceDate])
+}
+
+model CustomerInvoice {
+  id            String    @id @default(cuid())
+  number        String    @unique
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id])
+  type          String
+  invoiceDate   DateTime
+  netPence      Int
+  vatPence      Int
+  grossPence    Int
+  status            String    @default("UNPAID")
+  paidAt            DateTime?
+  companyLegalName  String    @default("Bellwoods Windows and Doors Ltd")
+  companyVatNumber  String    @default("GB000000000")
+  xeroInvoiceId     String?
+  xeroStatus        String?
+  createdAt     DateTime  @default(now())
+
+  @@index([contractId])
+  @@index([status])
+  @@index([invoiceDate])
+}
+
+model LabourPerson {
+  id         String  @id @default(cuid())
+  name       String
+  trade      String
+  employment String
+  rateType   String
+  ratePence  Int
+  active     Boolean @default(true)
+  notes      String  @default("")
+
+  entries LabourEntry[]
+}
+
+model LabourEntry {
+  id         String       @id @default(cuid())
+  contractId String
+  contract   Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  personId   String
+  person     LabourPerson @relation(fields: [personId], references: [id])
+  workDate   DateTime
+  days       Float        @default(0)
+  hours      Float        @default(0)
+  costPence  Int
+  notes      String       @default("")
+  createdAt  DateTime     @default(now())
+
+  @@index([contractId])
+  @@index([workDate])
+}
+
+model InboundEmail {
+  id            String    @id @default(cuid())
+  fromName      String    @default("")
+  fromEmail     String
+  subject       String    @default("")
+  bodyText      String    @default("")
+  receivedAt    DateTime  @default(now())
+  messageId     String?   @unique
+  source        String    @default("API")
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  contractId    String?
+  contract      Contract? @relation(fields: [contractId], references: [id])
+  enquiryId     String?
+  enquiry       Enquiry?  @relation(fields: [enquiryId], references: [id])
+  matchNotes    String    @default("")
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+  attachments   InboundAttachment[]
+
+  @@index([readAt])
+  @@index([receivedAt])
+}
+
+model InboundAttachment {
+  id           String       @id @default(cuid())
+  emailId      String
+  email        InboundEmail @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  createdAt    DateTime     @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model WebhookEndpoint {
+  id         String   @id @default(cuid())
+  url        String
+  secret     String
+  events     String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  deliveries WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id             String          @id @default(cuid())
+  endpointId     String
+  endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event          String
+  payload        String
+  status         String
+  responseStatus Int?
+  error          String          @default("")
+  createdAt      DateTime        @default(now())
+
+  @@index([createdAt])
+}
