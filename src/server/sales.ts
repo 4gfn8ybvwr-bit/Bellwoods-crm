@@ -15,6 +15,8 @@ export async function createEnquiry(
     productInterest: string;
     assignedToId?: string | null;
     notes?: string;
+    channel?: "BELLWOODS" | "TRADE";
+    status?: string;
   },
 ) {
   allow(actor, "write");
@@ -30,7 +32,8 @@ export async function createEnquiry(
       productInterest: input.productInterest.trim(),
       assignedToId: input.assignedToId || actor.userId,
       notes: input.notes?.trim() ?? "",
-      status: "OPEN",
+      status: input.status && ["OPEN", "QUOTED", "WON", "LOST"].includes(input.status) ? input.status : "OPEN",
+      channel: input.channel === "TRADE" ? "TRADE" : "BELLWOODS",
     },
     include: { customer: true, assignedTo: true },
   });
@@ -53,6 +56,7 @@ export async function updateEnquiry(
     status?: string;
     assignedToId?: string | null;
     notes?: string;
+    channel?: "BELLWOODS" | "TRADE";
   },
 ) {
   allow(actor, "write");
@@ -69,6 +73,7 @@ export async function updateEnquiry(
       status: input.status,
       assignedToId: input.assignedToId === undefined ? undefined : input.assignedToId || null,
       notes: input.notes !== undefined ? input.notes.trim() : undefined,
+      channel: input.channel,
     },
     include: { customer: true, assignedTo: true },
   });
@@ -206,14 +211,17 @@ async function saveQuoteRecord(
     validUntil?: Date | null;
     lines: SpecLineInput[];
     status?: string;
+    channel?: "BELLWOODS" | "TRADE";
   },
   quoteId?: string,
 ) {
   const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
   if (!customer) throw new ServiceError(404, "Customer not found");
+  let channel: "BELLWOODS" | "TRADE" = input.channel === "TRADE" ? "TRADE" : "BELLWOODS";
   if (input.enquiryId) {
     const enquiry = await prisma.enquiry.findUnique({ where: { id: input.enquiryId } });
     if (!enquiry || enquiry.customerId !== customer.id) throw new ServiceError(400, "Enquiry does not match the customer");
+    if (enquiry.channel === "TRADE") channel = "TRADE";
   }
   const priced = await copyQuoteLines(input.lines);
   if (quoteId) {
@@ -246,6 +254,7 @@ async function saveQuoteRecord(
         number: `Q-${n}`,
         customerId: customer.id,
         enquiryId: input.enquiryId || null,
+        channel,
         notes: input.notes?.trim() ?? "",
         validUntil: input.validUntil ?? null,
         netPence: priced.netPence,

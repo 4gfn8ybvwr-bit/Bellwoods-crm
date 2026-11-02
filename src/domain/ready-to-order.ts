@@ -2,6 +2,7 @@ export type ReadyToOrderInput = {
   depositSkipped: boolean;
   depositPaid: boolean;
   surveyUploaded: boolean;
+  surveyWaived?: boolean;
 };
 
 export type ReadyToOrderResult = {
@@ -17,7 +18,7 @@ export type ReadyToOrderResult = {
  */
 export function readyToOrderGate(input: ReadyToOrderInput): ReadyToOrderResult {
   const depositOk = input.depositSkipped || input.depositPaid;
-  const surveyOk = input.surveyUploaded;
+  const surveyOk = input.surveyUploaded || Boolean(input.surveyWaived);
   const reasons: string[] = [];
   if (!depositOk) reasons.push("The deposit has not been paid or skipped");
   if (!surveyOk) reasons.push("The survey has not been uploaded");

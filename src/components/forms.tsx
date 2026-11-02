@@ -2,6 +2,7 @@ import { ENQUIRY_SOURCES, PRODUCT_TYPES, ROLES } from "@/domain/labels";
 import { saveCustomer, saveEnquiry, saveQuote, convertQuote, openContract } from "@/app/actions";
 import { ActionForm, Submit } from "@/components/ui";
 import { LineEditor } from "@/components/line-editor";
+import { ChannelField } from "@/components/channel-field";
 
 type CustomerShape = {
   id: string;
@@ -59,7 +60,7 @@ export function EnquiryFields({
   customers: { id: string; name: string; companyName: string }[];
   users: { id: string; name: string }[];
   customerId?: string;
-  enquiry?: { id: string; customerId: string; source: string; productInterest: string; status: string; assignedToId: string | null; notes: string };
+  enquiry?: { id: string; customerId: string; source: string; productInterest: string; status: string; assignedToId: string | null; notes: string; channel?: string };
 }) {
   return (
     <ActionForm action={saveEnquiry} className="card grid max-w-3xl gap-3 p-4">
@@ -72,6 +73,7 @@ export function EnquiryFields({
         </select>
       </label>
       {enquiry && <input type="hidden" name="customerId" value={enquiry.customerId} />}
+      <ChannelField defaultValue={enquiry?.channel === "TRADE" ? "trade" : "bellwoods"} />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="field">
           <span>Source</span>
@@ -181,19 +183,13 @@ export function AcceptQuoteForm({ quoteId, defaultPercent }: { quoteId: string; 
     <ActionForm action={convertQuote} className="card grid gap-3 p-4">
       <input type="hidden" name="id" value={quoteId} />
       <h2 className="text-xl">Accept and open a contract</h2>
+      <ChannelField allowCommercial />
       <label className="field">
-        <span>Contract type</span>
-        <select className="select" name="type" defaultValue="BW">
-          <option value="BW">BW retail</option>
-          <option value="TC">TC trade</option>
-          <option value="CM">CM commercial repair</option>
-        </select>
-      </label>
-      <label className="field">
-        <span>Deposit %</span>
+        <span>Deposit % (Bellwoods only)</span>
         <input className="input" name="depositPercent" defaultValue={defaultPercent} inputMode="numeric" />
       </label>
-      <label className="text-sm"><input className="mr-2" type="checkbox" name="skipDeposit" />Skip the deposit</label>
+      <label className="text-sm"><input className="mr-2" type="checkbox" name="skipDeposit" />Skip the deposit on a Bellwoods job</label>
+      <label className="text-sm"><input className="mr-2" type="checkbox" name="keepDeposit" />Take a deposit on a trade job</label>
       <Submit>Accept quote</Submit>
     </ActionForm>
   );
@@ -212,18 +208,11 @@ export function OpenContractForm({
     <ActionForm action={openContract} className="card grid gap-3 p-4">
       <h2 className="text-xl">Open a contract before it is sold</h2>
       <input type="hidden" name="enquiryId" value={enquiryId ?? ""} />
+      <ChannelField allowCommercial />
       <label className="field">
         <span>Customer</span>
         <select className="select" name="customerId" defaultValue={customerId} required>
           {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName || customer.name}</option>)}
-        </select>
-      </label>
-      <label className="field">
-        <span>Type</span>
-        <select className="select" name="type" defaultValue="BW">
-          <option value="BW">BW</option>
-          <option value="TC">TC</option>
-          <option value="CM">CM</option>
         </select>
       </label>
       <label className="field">

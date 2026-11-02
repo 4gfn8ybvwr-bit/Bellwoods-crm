@@ -1,5 +1,6 @@
 import { readFile } from "fs/promises";
 import { resolve } from "path";
+import { parseChannelFilter } from "@/domain/channel";
 import { ServiceError } from "@/domain/errors";
 import { londonToUtc, parseDateInput, partsInLondon } from "@/domain/dates";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +13,9 @@ import * as purchasing from "./purchasing";
 import * as finance from "./finance";
 import * as labour from "./labour";
 import * as queries from "./queries";
+import { ingestEmail, assignEmail, markEmailRead, enquiryFromEmail, tradeJobFromEmail } from "./email/ingest";
+import { imapSource, graphSource, mailSourceStatus } from "./email/sources";
+import { quickAddTradeJob, tradeCustomers } from "./trade";
 import { exportCsv } from "./exports";
 import { getSettings } from "./settings";
 import { uploadRoot } from "./pipeline";
@@ -72,7 +76,7 @@ export const routes: RouteDef[] = [
       const range = explicit ?? (await queries.defaultDashboardRange(preset));
       const from = explicit ? explicit.from : range.from;
       const toExclusive = explicit ? explicit.toExclusive : range.toExclusive;
-      return ok(await queries.getDashboard(from, toExclusive));
+      return ok(await queries.getDashboard(from, toExclusive, parseChannelFilter(query.get("channel") ?? undefined)));
     },
   },
   {
@@ -240,8 +244,9 @@ export const routes: RouteDef[] = [
     tags: ["Enquiries"],
     handler: async ({ query }) => {
       const status = query.get("status") ?? undefined;
+      const channel = parseChannelFilter(query.get("channel") ?? undefined);
       const data = await prisma.enquiry.findMany({
-        where: status ? { status } : undefined,
+        where: { ...(status ? { status } : {}), ...(channel === "ALL" ? {} : { channel }) },
         include: { customer: true, assignedTo: true },
         orderBy: { createdAt: "desc" },
         take: limitOf(query),
@@ -373,7 +378,10 @@ export const routes: RouteDef[] = [
     summary: "List quotes",
     tags: ["Quotes"],
     handler: async ({ query }) => ok(await prisma.quote.findMany({
-      where: query.get("status") ? { status: query.get("status")! } : undefined,
+      where: {
+        ...(query.get("status") ? { status: query.get("status")! } : {}),
+        ...(parseChannelFilter(query.get("channel") ?? undefined) === "ALL" ? {} : { channel: parseChannelFilter(query.get("channel") ?? undefined) }),
+      },
       include: { customer: true, lines: true },
       orderBy: { createdAt: "desc" },
       take: limitOf(query),
@@ -469,6 +477,7 @@ export const routes: RouteDef[] = [
       q: query.get("q") ?? undefined,
       stage: query.get("stage") ?? undefined,
       type: query.get("type") ?? undefined,
+      channel: parseChannelFilter(query.get("channel") ?? undefined),
       limit: limitOf(query),
       offset: offsetOf(query),
     })),
@@ -479,7 +488,7 @@ export const routes: RouteDef[] = [
     permission: "read",
     summary: "Kanban board of contracts by stage",
     tags: ["Contracts"],
-    handler: async () => ok(await queries.board()),
+    handler: async ({ query }) => ok(await queries.board(parseChannelFilter(query.get("channel") ?? undefined))),
   },
   {
     method: "POST",
@@ -1192,6 +1201,182 @@ export const routes: RouteDef[] = [
         vatRateBps: body.vatRateBps == null ? undefined : intField(body.vatRateBps, "vatRateBps"),
       }));
     },
+  },
+  {
+    method: "GET",
+    pattern: "/trade-customers",
+    permission: "read",
+    summary: "Trade customers for quick-add, recently used first",
+    tags: ["Contracts"],
+    handler: async ({ query }) => ok(await tradeCustomers(query.get("q") ?? undefined)),
+  },
+  {
+    method: "POST",
+    pattern: "/trade-jobs",
+    permission: "write",
+    summary: "Quick-add a trade job and the enquiry behind it",
+    tags: ["Contracts"],
+    handler: async ({ request, actor }) => {
+      const body = await readJson(request);
+      const created = body.newCustomer as Record<string, unknown> | undefined;
+      return ok(await quickAddTradeJob(actor, {
+        customerId: str(body.customerId) || null,
+        newCustomer: created ? {
+          companyName: required(created.companyName, "companyName"),
+          contactName: str(created.contactName),
+          email: str(created.email),
+          phone: str(created.phone),
+          city: str(created.city),
+          postcode: str(created.postcode),
+        } : null,
+        jobType: required(body.jobType, "jobType"),
+        description: str(body.description),
+        customerReference: str(body.customerReference),
+        siteAddress: str(body.siteAddress),
+        surveyWaived: Boolean(body.surveyWaived),
+        repeatLast: Boolean(body.repeatLast),
+        emailId: str(body.emailId) || null,
+      }), 201);
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/emails",
+    permission: "read",
+    summary: "Inbox of inbound customer emails",
+    tags: ["Inbox"],
+    handler: async ({ query }) => ok(await prisma.inboundEmail.findMany({
+      where: query.get("unmatched") === "1" ? { customerId: null } : undefined,
+      include: { customer: true, contract: true, attachments: true },
+      orderBy: { receivedAt: "desc" },
+      take: limitOf(query),
+    })),
+  },
+  {
+    method: "POST",
+    pattern: "/emails",
+    permission: "write",
+    summary: "Post an inbound email into the inbox",
+    tags: ["Inbox"],
+    handler: async ({ request, actor }) => {
+      const body = await readJson(request);
+      const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+      return ok(await ingestEmail(actor, {
+        fromName: str(body.fromName),
+        fromEmail: required(body.fromEmail, "fromEmail"),
+        subject: str(body.subject),
+        bodyText: str(body.bodyText ?? body.text),
+        messageId: str(body.messageId) || null,
+        source: "API",
+        receivedAt: body.receivedAt ? dateTimeField(body.receivedAt, "receivedAt") : undefined,
+        attachments: attachments.map((item) => {
+          const row = item as Record<string, unknown>;
+          return {
+            filename: str(row.filename, "file.txt"),
+            mimeType: str(row.mimeType ?? row.contentType, "text/plain"),
+            bytes: Buffer.from(str(row.contentBase64), "base64"),
+          };
+        }),
+      }), 201);
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/emails/sources",
+    permission: "read",
+    summary: "Whether IMAP or Microsoft 365 polling is configured",
+    tags: ["Inbox"],
+    handler: async () => ok(mailSourceStatus()),
+  },
+  {
+    method: "POST",
+    pattern: "/emails/poll",
+    permission: "admin",
+    summary: "Pull unseen mail from a configured IMAP or Microsoft 365 mailbox",
+    tags: ["Inbox"],
+    handler: async ({ actor }) => {
+      const sources = [graphSource, imapSource].filter((source) => source.configured());
+      if (sources.length === 0) throw new ServiceError(400, "No mailbox is configured. Set IMAP_* or GRAPH_* environment variables.");
+      const pulled = [];
+      for (const source of sources) {
+        const messages = await source.pull();
+        for (const message of messages) pulled.push(await ingestEmail(actor, message));
+      }
+      return ok({ count: pulled.length });
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/email-attachments/:id",
+    permission: "read",
+    summary: "Download an email attachment",
+    tags: ["Inbox"],
+    handler: async ({ params }) => {
+      const file = await prisma.inboundAttachment.findUnique({ where: { id: params.id } });
+      if (!file) throw new ServiceError(404, "Attachment not found");
+      const root = resolve(uploadRoot());
+      const full = resolve(file.storagePath);
+      if (!full.startsWith(root)) throw new ServiceError(400, "Bad file path");
+      const bytes = await readFile(full);
+      return new Response(bytes, { headers: { "content-type": file.mimeType, "content-disposition": `inline; filename="${file.filename.replace(/"/g, "")}"` } });
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/emails/:id",
+    permission: "read",
+    summary: "One inbound email, including match and attachments",
+    tags: ["Inbox"],
+    handler: async ({ params }) => {
+      const email = await prisma.inboundEmail.findUnique({
+        where: { id: params.id },
+        include: { customer: true, contract: true, enquiry: true, attachments: true },
+      });
+      if (!email) throw new ServiceError(404, "Email not found");
+      return ok(email);
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/emails/:id/assign",
+    permission: "write",
+    summary: "Manually assign an email to a customer and optional job",
+    tags: ["Inbox"],
+    handler: async ({ request, params, actor }) => {
+      const body = await readJson(request);
+      return ok(await assignEmail(actor, params.id, { customerId: str(body.customerId) || null, contractId: str(body.contractId) || null }));
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/emails/:id/read",
+    permission: "read",
+    summary: "Mark an email read or unread",
+    tags: ["Inbox"],
+    handler: async ({ request, params, actor }) => {
+      const body = await readJson(request);
+      return ok(await markEmailRead(actor, params.id, body.read !== false));
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/emails/:id/enquiry",
+    permission: "write",
+    summary: "Turn an email into an enquiry",
+    tags: ["Inbox"],
+    handler: async ({ request, params, actor }) => {
+      const body = await readJson(request);
+      const channel = str(body.channel).toUpperCase() === "TRADE" ? "TRADE" : "BELLWOODS";
+      return ok(await enquiryFromEmail(actor, params.id, channel), 201);
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/emails/:id/trade-job",
+    permission: "write",
+    summary: "Turn an email into a quick trade job",
+    tags: ["Inbox"],
+    handler: async ({ params, actor }) => ok(await tradeJobFromEmail(actor, params.id), 201),
   },
   {
     method: "GET",

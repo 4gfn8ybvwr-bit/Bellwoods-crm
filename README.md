@@ -44,7 +44,7 @@ Demo API keys (hashed in the database, revoke them before any real hosting):
 - Read and write: `bw_live_rw_demo_bellwoods`
 - Read only: `bw_live_ro_demo_bellwoods`
 
-`npm run db:reset` wipes the local file and loads the demo again. `npm test` checks the ready-to-order gate, invoice tolerance, job costing and API keys.
+`npm run db:reset` wipes the local file and loads the demo again. `npm test` checks the ready-to-order gate, invoice tolerance, job costing, trade quick-add, email matching and API keys.
 
 ## What you can do
 
@@ -58,6 +58,18 @@ Demo API keys (hashed in the database, revoke them before any real hosting):
 8. Read the job cost on the contract: invoiced sales (net), materials, labour, profit and margin. A PO with no accepted supplier invoice is costed at the PO value and flagged, so the cost is not quietly missing.
 9. Use the dashboard for open enquiries, quotes waiting on a follow-up, jobs ready to order, fits in the next fortnight, invoices in review, and profit on jobs **completed** in a date range, split by BW, TC and commercial.
 10. Export the main lists as CSV from the list pages, or `GET /api/v1/exports/customers` (and `enquiries`, `quotes`, `contracts`, `purchase-orders`, `supplier-invoices`, `customer-invoices`).
+
+### Bellwoods and trade
+
+Bellwoods retail and NETC trade are two ways of working, not two companies. Every customer invoice is issued by **Bellwoods Windows and Doors Ltd** (demo VAT `GB000000000`) on one `INV-` sequence, including trade jobs. Lists, the board and the dashboard filter All / Bellwoods / Trade. Trade rows and the trade contract page use a light blue background.
+
+**New trade job** (button on every page, or Alt+T) is the fast path for Seb: type a trade account (recent ones first) or add one inline, pick a job type, add a short description and their reference, and save. That writes the enquiry and the contract together, skips the deposit, and can repeat the customer’s last job. A survey can be marked not required. Sales appointments are not part of that path. The rest of the pipeline is still there.
+
+### Inbox
+
+Orders and enquiries that arrive by email show under Inbox, with an unread count on the sidebar and the notification bell. Matching uses the sender address, the sender’s company domain (not Gmail, Outlook, Hotmail and the like), a contract number in the subject or body, and a customer reference stored on the job. Unmatched mail can be assigned by hand, turned into an enquiry, or opened as a trade job. Attachments are kept.
+
+Post mail with the API (`POST /api/v1/emails`) or the webhook `POST /api/inbound-email` using header `x-bellwoods-inbound-secret`. IMAP and Microsoft 365 polling run from `POST /api/v1/emails/poll` when `IMAP_*` or `GRAPH_*` is set in the environment. No real mailbox credentials are stored in the repo. The seeded inbox has fictional messages, including one unmatched.
 
 ### A known completed job
 

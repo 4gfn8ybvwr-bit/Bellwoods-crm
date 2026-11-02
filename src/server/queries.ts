@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { getSettings } from "./settings";
 import { depositPaidFrom } from "./pipeline";
 import { readyToOrderGate } from "@/domain/ready-to-order";
+import type { Channel } from "@/domain/channel";
 
 const contractCostInclude = {
   customerInvoices: true,
@@ -67,6 +68,7 @@ export async function getContractView(id: string) {
     depositSkipped: contract.depositSkipped,
     depositPaid,
     surveyUploaded: contract.surveyUploaded,
+    surveyWaived: contract.surveyWaived,
   });
   const costing = costOf(contract);
   return {
@@ -98,8 +100,13 @@ export async function getContractView(id: string) {
   };
 }
 
-export async function listContracts(filters: { q?: string; stage?: string; type?: string; limit?: number; offset?: number }) {
-  const where: Prisma.ContractWhereInput = {};
+function channelFilter(channel: Channel | "ALL" | undefined): { channel?: Channel } {
+  if (!channel || channel === "ALL") return {};
+  return { channel };
+}
+
+export async function listContracts(filters: { q?: string; stage?: string; type?: string; channel?: Channel | "ALL"; limit?: number; offset?: number }) {
+  const where: Prisma.ContractWhereInput = { ...channelFilter(filters.channel) };
   if (filters.stage) where.stage = { slug: filters.stage };
   if (filters.type) where.type = filters.type;
   if (filters.q) {
@@ -123,11 +130,12 @@ export async function listContracts(filters: { q?: string; stage?: string; type?
   return { total, data };
 }
 
-export async function board() {
+export async function board(channel: Channel | "ALL" = "ALL") {
   const stages = await prisma.stage.findMany({
     orderBy: { sortOrder: "asc" },
     include: {
       contracts: {
+        where: channelFilter(channel),
         include: { customer: true },
         orderBy: { updatedAt: "desc" },
       },
@@ -136,46 +144,49 @@ export async function board() {
   return stages;
 }
 
-export async function getDashboard(from: Date, toExclusive: Date) {
+export async function getDashboard(from: Date, toExclusive: Date, channel: Channel | "ALL" = "ALL") {
   const now = new Date();
   const soon = addLondonDays(now, 14);
+  const enquiryWhere = { status: "OPEN" as const, ...channelFilter(channel) };
+  const quoteWhere = { status: "SENT" as const, ...channelFilter(channel) };
+  const contractWhere = channelFilter(channel);
   const [openEnquiries, quotes, ready, fits, reviews, completed, unmatchedPos] = await Promise.all([
     prisma.enquiry.findMany({
-      where: { status: "OPEN" },
+      where: enquiryWhere,
       include: { customer: true, assignedTo: true },
       orderBy: { createdAt: "desc" },
       take: 8,
     }),
     prisma.quote.findMany({
-      where: { status: "SENT" },
+      where: quoteWhere,
       include: { customer: true },
       orderBy: { updatedAt: "desc" },
       take: 8,
     }),
     prisma.contract.findMany({
-      where: { stage: { slug: "ready-to-order" } },
+      where: { stage: { slug: "ready-to-order" }, ...contractWhere },
       include: { customer: true, stage: true },
       orderBy: { updatedAt: "desc" },
       take: 8,
     }),
     prisma.appointment.findMany({
-      where: { type: "FIT", startsAt: { gte: now, lt: soon } },
+      where: { type: "FIT", startsAt: { gte: now, lt: soon }, ...(channel === "ALL" ? {} : { contract: { channel } }) },
       include: { customer: true, contract: true, user: true },
       orderBy: { startsAt: "asc" },
       take: 8,
     }),
     prisma.supplierInvoice.findMany({
-      where: { status: "PENDING_REVIEW" },
+      where: { status: "PENDING_REVIEW", ...(channel === "ALL" ? {} : { purchaseOrder: { contract: { channel } } }) },
       include: { purchaseOrder: { include: { supplier: true, contract: true } } },
       orderBy: { createdAt: "desc" },
       take: 8,
     }),
     prisma.contract.findMany({
-      where: { completedAt: { gte: from, lt: toExclusive } },
+      where: { completedAt: { gte: from, lt: toExclusive }, ...contractWhere },
       include: contractCostInclude,
     }),
     prisma.purchaseOrder.findMany({
-      where: { invoices: { none: { status: "ACCEPTED" } }, status: { not: "DRAFT" } },
+      where: { invoices: { none: { status: "ACCEPTED" } }, status: { not: "DRAFT" }, ...(channel === "ALL" ? {} : { contract: { channel } }) },
       select: { id: true, number: true, netPence: true, contract: { select: { number: true, type: true } } },
     }),
   ]);
@@ -212,11 +223,11 @@ export async function getDashboard(from: Date, toExclusive: Date) {
 
   return {
     counts: {
-      openEnquiries: await prisma.enquiry.count({ where: { status: "OPEN" } }),
-      quotesAwaitingFollowUp: await prisma.quote.count({ where: { status: "SENT" } }),
-      readyToOrder: await prisma.contract.count({ where: { stage: { slug: "ready-to-order" } } }),
-      upcomingFits: await prisma.appointment.count({ where: { type: "FIT", startsAt: { gte: now, lt: soon } } }),
-      invoicesAwaitingReview: await prisma.supplierInvoice.count({ where: { status: "PENDING_REVIEW" } }),
+      openEnquiries: await prisma.enquiry.count({ where: enquiryWhere }),
+      quotesAwaitingFollowUp: await prisma.quote.count({ where: quoteWhere }),
+      readyToOrder: await prisma.contract.count({ where: { stage: { slug: "ready-to-order" }, ...contractWhere } }),
+      upcomingFits: await prisma.appointment.count({ where: { type: "FIT", startsAt: { gte: now, lt: soon }, ...(channel === "ALL" ? {} : { contract: { channel } }) } }),
+      invoicesAwaitingReview: await prisma.supplierInvoice.count({ where: { status: "PENDING_REVIEW", ...(channel === "ALL" ? {} : { purchaseOrder: { contract: { channel } } }) } }),
     },
     openEnquiries,
     quotesAwaitingFollowUp: quotes,

@@ -3,6 +3,8 @@ import type { Actor } from "@/domain/permissions";
 import { prisma } from "@/lib/prisma";
 
 export async function resetDatabase() {
+  await prisma.inboundAttachment.deleteMany();
+  await prisma.inboundEmail.deleteMany();
   await prisma.webhookDelivery.deleteMany();
   await prisma.webhookEndpoint.deleteMany();
   await prisma.activity.deleteMany();

@@ -13,6 +13,7 @@ describe("ready to order", () => {
     expect(readyToOrderGate({ depositSkipped: false, depositPaid: true, surveyUploaded: false }).ok).toBe(false);
     expect(readyToOrderGate({ depositSkipped: true, depositPaid: false, surveyUploaded: true }).ok).toBe(true);
     expect(readyToOrderGate({ depositSkipped: false, depositPaid: true, surveyUploaded: true }).ok).toBe(true);
+    expect(readyToOrderGate({ depositSkipped: true, depositPaid: false, surveyUploaded: false, surveyWaived: true }).ok).toBe(true);
   });
 
   it("applies the gate from Ready to order onwards", () => {

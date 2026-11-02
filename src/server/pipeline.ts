@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { recordActivity } from "./activity";
 import { emitEvent } from "./webhooks";
 import { getSettings } from "./settings";
+import { channelFromType, type Channel } from "@/domain/channel";
 import { formatContractNumber, takeNext } from "./numbers";
 import { formatAddress } from "./customers";
 import { insertCustomerInvoice } from "./finance";
@@ -32,6 +33,7 @@ export async function loadGate(contractId: string) {
     depositSkipped: contract.depositSkipped,
     depositPaid,
     surveyUploaded: contract.surveyUploaded,
+    surveyWaived: contract.surveyWaived,
   });
   return { contract, depositPaid, gate };
 }
@@ -106,6 +108,11 @@ export async function createContract(
     siteAddress?: string;
     salesValuePence?: number;
     notes?: string;
+    channel?: Channel;
+    depositSkipped?: boolean;
+    customerReference?: string;
+    jobType?: string;
+    surveyWaived?: boolean;
   },
 ) {
   allow(actor, "write");
@@ -123,18 +130,26 @@ export async function createContract(
   }
   const stage = await stageBySlug(input.stageSlug || "enquiry");
   const primary = customer.addresses.find((address) => address.isPrimary) ?? customer.addresses[0];
+  const channel = input.channel ?? channelFromType(input.type);
+  const trade = channel === "TRADE";
+  const settings = await getSettings();
   const contract = await prisma.$transaction(async (tx) => {
     const n = await takeNext(tx, "contract");
     const created = await tx.contract.create({
       data: {
         number: formatContractNumber(input.type, n),
         type: input.type,
+        channel,
+        jobType: input.jobType?.trim() ?? "",
+        customerReference: input.customerReference?.trim() ?? "",
         customerId: customer.id,
         stageId: stage.id,
         siteAddress: input.siteAddress?.trim() || (primary ? formatAddress(primary) : ""),
         salesValuePence: input.salesValuePence ?? 0,
         notes: input.notes?.trim() ?? "",
-        depositPercent: (await getSettings()).defaultDepositPercent,
+        depositPercent: trade ? 0 : settings.defaultDepositPercent,
+        depositSkipped: input.depositSkipped ?? trade,
+        surveyWaived: input.surveyWaived ?? false,
       },
     });
     if (input.enquiryId) {
@@ -172,6 +187,10 @@ export async function updateContract(
     fittersNotes?: string;
     externalWorks?: string;
     surveyUploaded?: boolean;
+    surveyWaived?: boolean;
+    customerReference?: string;
+    channel?: Channel;
+    jobType?: string;
   },
 ) {
   allow(actor, "write");
@@ -197,6 +216,10 @@ export async function updateContract(
       fittersNotes: input.fittersNotes !== undefined ? input.fittersNotes.trim() : undefined,
       externalWorks: input.externalWorks !== undefined ? input.externalWorks.trim() : undefined,
       surveyUploaded: input.surveyUploaded,
+      surveyWaived: input.surveyWaived,
+      customerReference: input.customerReference !== undefined ? input.customerReference.trim() : undefined,
+      channel: input.channel,
+      jobType: input.jobType !== undefined ? input.jobType.trim() : undefined,
     },
   });
   if (input.surveyUploaded != null) {
@@ -220,7 +243,7 @@ export async function acceptQuote(
   allow(actor, "write");
   if (!CONTRACT_TYPES.has(input.type)) throw new ServiceError(400, "Contract type must be BW, TC or CM");
   const settings = await getSettings();
-  const skipDeposit = Boolean(input.skipDeposit);
+  const skipDeposit = input.skipDeposit ?? input.type === "TC";
   const depositPercent = skipDeposit ? 0 : (input.depositPercent ?? settings.defaultDepositPercent);
   if (!skipDeposit && (!Number.isInteger(depositPercent) || depositPercent < 1 || depositPercent > 100)) {
     throw new ServiceError(400, "Deposit percent must be a whole number from 1 to 100, or skip the deposit");
@@ -238,6 +261,7 @@ export async function acceptQuote(
   const sold = await stageBySlug("sold");
   const depositStage = await stageBySlug("deposit-stage");
   const targetStage = skipDeposit ? sold : depositStage;
+  const channel = channelFromType(input.type);
   const primary = quote.customer.addresses.find((address) => address.isPrimary) ?? quote.customer.addresses[0];
 
   const result = await prisma.$transaction(async (tx) => {
@@ -257,6 +281,7 @@ export async function acceptQuote(
         data: {
           number: formatContractNumber(input.type, n),
           type: input.type,
+          channel,
           customerId: quote.customerId,
           quoteId: quote.id,
           stageId: targetStage.id,
@@ -272,6 +297,7 @@ export async function acceptQuote(
         where: { id: contract.id },
         data: {
           type: input.type,
+          channel,
           quoteId: quote.id,
           stageId: targetStage.id,
           salesValuePence: quote.netPence,
@@ -300,7 +326,7 @@ export async function acceptQuote(
     if (quote.enquiryId) {
       await tx.enquiry.update({
         where: { id: quote.enquiryId },
-        data: { status: "WON", contractId: contract.id },
+        data: { status: "WON", contractId: contract.id, channel },
       });
     }
     let deposit = null;

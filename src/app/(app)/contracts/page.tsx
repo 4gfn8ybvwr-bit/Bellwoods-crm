@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { formatGbp } from "@/domain/money";
+import { parseChannelFilter } from "@/domain/channel";
 import { listContracts } from "@/server/queries";
 import { prisma } from "@/lib/prisma";
+import { ChannelLinks } from "@/components/channel-links";
 import { PageHeader, Empty } from "@/components/ui";
 import { first, type SearchParams } from "@/lib/search";
 
@@ -12,8 +14,9 @@ export default async function ContractsPage({ searchParams }: { searchParams: Se
   const q = first(params.q) ?? "";
   const stage = first(params.stage) ?? "";
   const type = first(params.type) ?? "";
+  const channel = parseChannelFilter(first(params.channel));
   const [{ data }, stages] = await Promise.all([
-    listContracts({ q, stage, type }),
+    listContracts({ q, stage, type, channel }),
     prisma.stage.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
   return (
@@ -22,7 +25,9 @@ export default async function ContractsPage({ searchParams }: { searchParams: Se
         <a className="btn" href="/api/v1/exports/contracts" download>Export CSV</a>
         <Link className="btn" href="/contracts/board">Board</Link>
       </PageHeader>
+      <div className="mb-3"><ChannelLinks current={channel === "ALL" ? "all" : channel === "TRADE" ? "trade" : "bellwoods"} path="/contracts" extra={{ ...(q ? { q } : {}), ...(stage ? { stage } : {}) }} /></div>
       <form className="mb-4 flex flex-wrap gap-2" method="get">
+        {channel !== "ALL" && <input type="hidden" name="channel" value={channel === "TRADE" ? "trade" : "bellwoods"} />}
         <input className="input max-w-xs" name="q" defaultValue={q} placeholder="Number, customer, site" />
         <select className="select max-w-[200px]" name="stage" defaultValue={stage}>
           <option value="">All stages</option>
@@ -41,7 +46,7 @@ export default async function ContractsPage({ searchParams }: { searchParams: Se
           <thead><tr><th>Number</th><th>Customer</th><th>Stage</th><th>Site</th><th>Agreed net</th></tr></thead>
           <tbody>
             {data.map((contract) => (
-              <tr key={contract.id}>
+              <tr key={contract.id} className={contract.channel === "TRADE" ? "trade-row" : ""}>
                 <td><Link className="font-semibold text-forest" href={`/contracts/${contract.id}`}>{contract.number}</Link></td>
                 <td>{contract.customer.name}</td>
                 <td>{contract.stage.name}</td>

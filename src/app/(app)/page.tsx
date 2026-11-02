@@ -2,8 +2,10 @@ import Link from "next/link";
 import { formatGbp, formatMargin } from "@/domain/money";
 import { formatUkDate, formatUkDateTime, parseDateInput, partsInLondon, londonToUtc } from "@/domain/dates";
 import { financialYearContaining, previousFinancialYear, rangeLabel } from "@/domain/financial-year";
+import { parseChannelFilter } from "@/domain/channel";
 import { getSettings } from "@/server/settings";
 import { getDashboard } from "@/server/queries";
+import { ChannelLinks } from "@/components/channel-links";
 import { PageHeader } from "@/components/ui";
 import { first, type SearchParams } from "@/lib/search";
 
@@ -12,6 +14,7 @@ export const metadata = { title: "Dashboard" };
 export default async function DashboardPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const settings = await getSettings();
+  const channel = parseChannelFilter(first(params.channel));
   const preset = first(params.preset);
   const fromText = first(params.from);
   const toText = first(params.to);
@@ -31,7 +34,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
     from = range.from;
     toExclusive = range.toExclusive;
   }
-  const dashboard = await getDashboard(from, toExclusive);
+  const dashboard = await getDashboard(from, toExclusive, channel);
   const endInclusive = new Date(toExclusive.getTime() - 60_000);
   const cards: [string, number, string][] = [
     ["Open enquiries", dashboard.counts.openEnquiries, "/enquiries?status=OPEN"],
@@ -49,7 +52,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
 
   return (
     <div>
-      <PageHeader title="Today in the office" lede="Queues that need a person, then profit on jobs completed in the selected range. The financial year starts on 1 November." />
+      <PageHeader title="Today in the office" lede="Queues that need a person, then profit on jobs completed in the selected range. The financial year starts on 1 November. Filter Bellwoods or trade without splitting the company.">
+        <ChannelLinks current={channel === "ALL" ? "all" : channel === "TRADE" ? "trade" : "bellwoods"} path="/" extra={{ ...(preset ? { preset } : {}), ...(fromText && toText ? { from: fromText, to: toText } : {}) }} />
+      </PageHeader>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {cards.map(([label, value, href]) => (
           <Link key={label} href={href} className="card p-4 hover:border-copper">

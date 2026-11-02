@@ -22,6 +22,8 @@ function at(y: number, m: number, d: number, hh = 12, mm = 0) {
 }
 
 async function wipe() {
+  await prisma.inboundAttachment.deleteMany();
+  await prisma.inboundEmail.deleteMany();
   await prisma.webhookDelivery.deleteMany();
   await prisma.webhookEndpoint.deleteMany();
   await prisma.activity.deleteMany();
@@ -177,6 +179,7 @@ async function main() {
     stage: string;
     site: string;
     sales: number;
+    customerReference?: string;
     depositPercent?: number;
     depositSkipped?: boolean;
     survey?: boolean;
@@ -193,6 +196,8 @@ async function main() {
         stageId: stageId[input.stage],
         siteAddress: input.site,
         salesValuePence: input.sales,
+        channel: input.type === "TC" ? "TRADE" : "BELLWOODS",
+        customerReference: input.customerReference ?? "",
         depositPercent: input.depositPercent ?? 25,
         depositSkipped: input.depositSkipped ?? false,
         surveyUploaded: input.survey ?? false,
@@ -242,6 +247,8 @@ async function main() {
         grossPence: input.net + vat,
         status: input.status ?? "UNPAID",
         paidAt: input.paidAt ?? null,
+        companyLegalName: "Bellwoods Windows and Doors Ltd",
+        companyVatNumber: "GB000000000",
         xeroStatus: "NOT_SYNCED",
       },
     });
@@ -413,6 +420,7 @@ async function main() {
     stage: "ready-to-order",
     site: "Block B, Felling Court, Gateshead, NE10 0NS",
     sales: 1125000,
+    customerReference: "NS-2044",
     depositSkipped: true,
     depositPercent: 0,
     survey: true,
@@ -545,7 +553,9 @@ async function main() {
 
   await prisma.enquiry.create({ data: { customerId: margaret.id, source: "Website", productInterest: "Front and rear windows", status: "OPEN", assignedToId: sarah.id, notes: "Asked about a bay in the lounge." } });
   await prisma.enquiry.create({ data: { customerId: helenPark.id, source: "Phone", productInterest: "Composite front door", status: "OPEN", assignedToId: sarah.id } });
-  await prisma.enquiry.create({ data: { customerId: harbour.id, source: "Trade account", productInterest: "Plot 8 windows", status: "OPEN", assignedToId: sarah.id, notes: "Second plot after TC23291." } });
+  await prisma.enquiry.create({ data: { customerId: harbour.id, source: "Trade account", productInterest: "Plot 8 windows", status: "OPEN", channel: "TRADE", assignedToId: sarah.id, notes: "Second plot after TC23291." } });
+  await prisma.customer.update({ where: { id: harbour.id }, data: { lastUsedAt: at(2026, 10, 30, 9) } });
+  await prisma.customer.update({ where: { id: northshore.id }, data: { lastUsedAt: at(2026, 10, 28, 15) } });
 
   const iainJob = await contract({
     number: "BW23317",
@@ -581,6 +591,69 @@ async function main() {
       { contractId: samuelJob.id, entityType: "supplier_invoice", entityId: samuelJob.id, kind: "invoice", body: "Helen Crowe recorded supplier invoice GG-INV-3104 for review (variance against PO-5061)", userId: helen.id, createdAt: at(2026, 10, 28, 15) },
       { contractId: northJob.id, entityType: "contract", entityId: northJob.id, kind: "stage", body: "David Bell moved TC23305 to Ready to order", userId: david.id, createdAt: at(2026, 10, 24, 11) },
     ],
+  });
+
+  const orderMail = await prisma.inboundEmail.create({
+    data: {
+      fromName: "Chris Harbour",
+      fromEmail: "chris@harbour-joinery.example",
+      subject: "Extra sashes for TC23291",
+      bodyText: "Can you add two obscure sashes to TC23291 at Riverwear? Our reference HJ-88.",
+      receivedAt: at(2026, 11, 2, 8, 15),
+      source: "SEED",
+      customerId: harbour.id,
+      contractId: harbourJob.id,
+      matchNotes: "Matched contract TC23291 in the message. Matched the sender email address",
+      messageId: "<seed-harbour@example>",
+    },
+  });
+  const dir = path.join(process.cwd(), "data", "uploads", "email", orderMail.id);
+  await mkdir(dir, { recursive: true });
+  const storagePath = path.join(dir, "sketch.txt");
+  await writeFile(storagePath, "Fictional sketch note for the extra sashes.\n");
+  await prisma.inboundAttachment.create({
+    data: { emailId: orderMail.id, filename: "sketch.txt", mimeType: "text/plain", sizeBytes: 46, storagePath },
+  });
+  await prisma.inboundEmail.create({
+    data: {
+      fromName: "Ellen Frost",
+      fromEmail: "ellen.frost@example.com",
+      subject: "Thank you BW23290",
+      bodyText: "The bay looks right. Nothing else needed on BW23290.",
+      receivedAt: at(2026, 11, 1, 18, 0),
+      source: "SEED",
+      customerId: ellen.id,
+      contractId: ellenJob.id,
+      matchNotes: "Matched contract BW23290 in the message",
+      readAt: at(2026, 11, 1, 18, 30),
+      messageId: "<seed-ellen@example>",
+    },
+  });
+  await prisma.inboundEmail.create({
+    data: {
+      fromName: "Northshore orders",
+      fromEmail: "orders@northshore.example",
+      subject: "PO NS-2044 windows for block C",
+      bodyText: "Please book PO NS-2044, same spec as the last block.",
+      receivedAt: at(2026, 11, 2, 9, 5),
+      source: "SEED",
+      customerId: northshore.id,
+      contractId: northJob.id,
+      matchNotes: "Matched customer reference NS-2044. Matched the sender domain northshore.example",
+      messageId: "<seed-northshore@example>",
+    },
+  });
+  await prisma.inboundEmail.create({
+    data: {
+      fromName: "Pat Newbuild",
+      fromEmail: "pat@newbuild-site.example",
+      subject: "Quote for a show home",
+      bodyText: "We have a show home in Morpeth that needs windows. Please call.",
+      receivedAt: at(2026, 11, 2, 7, 40),
+      source: "SEED",
+      matchNotes: "No customer or job matched",
+      messageId: "<seed-unmatched@example>",
+    },
   });
 
   await prisma.webhookEndpoint.create({

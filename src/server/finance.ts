@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { allow, type Actor } from "@/domain/permissions";
 import { ServiceError } from "@/domain/errors";
+import { invoiceCompanyStamp } from "@/domain/company";
 import { vatFromNet } from "@/domain/money";
 import { recognisedSalesNet } from "@/domain/job-costing";
 import { prisma } from "@/lib/prisma";
@@ -37,6 +38,7 @@ export async function insertCustomerInvoice(
       grossPence: tax.grossPence,
       status: input.status ?? "UNPAID",
       paidAt: input.paidAt ?? null,
+      ...invoiceCompanyStamp(),
       xeroInvoiceId: null,
       xeroStatus: "NOT_SYNCED",
     },

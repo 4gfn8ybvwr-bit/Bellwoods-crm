@@ -135,6 +135,7 @@ export function openApiFromRoutes(routes: RouteDef[], serverUrl: string) {
       { name: "Invoices" },
       { name: "Labour" },
       { name: "Admin" },
+      { name: "Inbox" },
       { name: "Exports" },
     ],
     components: {

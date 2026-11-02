@@ -16,7 +16,9 @@ import { raiseDepositInvoice, raiseFinalInvoice, setCustomerInvoiceStatus, skipD
 import { addLabourEntry, deleteLabourEntry, savePerson } from "@/server/labour";
 import { acceptQuote, addDocument, addNote, createContract, createTask, moveStage, saveSurvey, updateContract, updateTask } from "@/server/pipeline";
 import { createPurchaseOrder, createSupplier, recordSupplierInvoice, reviewSupplierInvoice, setPurchaseOrderStatus, updateSupplier } from "@/server/purchasing";
+import { assignEmail, enquiryFromEmail, markEmailRead } from "@/server/email/ingest";
 import { createAppointment, createEnquiry, createQuote, deleteAppointment, rejectQuote, sendQuote, updateEnquiry, updateQuote } from "@/server/sales";
+import { quickAddTradeJob } from "@/server/trade";
 import type { SpecLineInput } from "@/server/lines";
 import type { PoLineInput } from "@/server/po-lines";
 
@@ -167,6 +169,7 @@ export async function saveEnquiry(_prev: ActionState, formData: FormData): Promi
   try {
     const actor = await actorFromSession();
     const id = text(formData, "id");
+    const channel = text(formData, "channel") === "trade" ? "TRADE" as const : "BELLWOODS" as const;
     const enquiry = id
       ? await updateEnquiry(actor, id, {
           source: text(formData, "source"),
@@ -174,6 +177,7 @@ export async function saveEnquiry(_prev: ActionState, formData: FormData): Promi
           status: text(formData, "status") || undefined,
           assignedToId: text(formData, "assignedToId") || null,
           notes: text(formData, "notes"),
+          channel,
         })
       : await createEnquiry(actor, {
           customerId: text(formData, "customerId"),
@@ -181,6 +185,7 @@ export async function saveEnquiry(_prev: ActionState, formData: FormData): Promi
           productInterest: text(formData, "productInterest"),
           assignedToId: text(formData, "assignedToId") || null,
           notes: text(formData, "notes"),
+          channel,
         });
     revalidatePath("/enquiries");
     redirect(`/enquiries/${enquiry.id}?notice=Enquiry saved`);
@@ -270,10 +275,11 @@ export async function convertQuote(_prev: ActionState, formData: FormData): Prom
   try {
     const actor = await actorFromSession();
     const id = text(formData, "id");
+    const trade = text(formData, "channel") === "trade";
     const result = await acceptQuote(actor, id, {
-      type: text(formData, "type"),
+      type: trade ? "TC" : formData.get("commercial") === "on" ? "CM" : "BW",
       depositPercent: text(formData, "depositPercent") ? Number(text(formData, "depositPercent")) : undefined,
-      skipDeposit: formData.get("skipDeposit") === "on",
+      skipDeposit: trade ? formData.get("keepDeposit") !== "on" : formData.get("skipDeposit") === "on",
     });
     revalidatePath("/contracts");
     redirect(`/contracts/${result.contract.id}?notice=Quote accepted and contract opened`);
@@ -285,9 +291,11 @@ export async function convertQuote(_prev: ActionState, formData: FormData): Prom
 export async function openContract(_prev: ActionState, formData: FormData): Promise<ActionState> {
   try {
     const actor = await actorFromSession();
+    const trade = text(formData, "channel") === "trade";
     const contract = await createContract(actor, {
       customerId: text(formData, "customerId"),
-      type: text(formData, "type"),
+      type: trade ? "TC" : formData.get("commercial") === "on" ? "CM" : "BW",
+      channel: trade ? "TRADE" : "BELLWOODS",
       enquiryId: text(formData, "enquiryId") || null,
       stageSlug: text(formData, "stage") || "enquiry",
       siteAddress: text(formData, "siteAddress"),
@@ -688,6 +696,87 @@ export async function saveStage(_prev: ActionState, formData: FormData): Promise
     else if (id) await updateStage(actor, id, { name: text(formData, "name"), colour: text(formData, "colour") });
     else await createStage(actor, { name: text(formData, "name"), slug: text(formData, "slug"), colour: text(formData, "colour") });
     redirect("/settings?notice=Pipeline updated");
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function saveQuickTrade(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    const mode = text(formData, "customerMode");
+    const result = await quickAddTradeJob(actor, {
+      customerId: mode === "new" ? null : text(formData, "customerId"),
+      newCustomer: mode === "new" ? {
+        companyName: text(formData, "companyName"),
+        contactName: text(formData, "contactName"),
+        email: text(formData, "email"),
+        phone: text(formData, "phone"),
+        city: text(formData, "city"),
+        postcode: text(formData, "postcode"),
+      } : null,
+      jobType: text(formData, "jobType"),
+      description: text(formData, "description"),
+      customerReference: text(formData, "customerReference"),
+      siteAddress: text(formData, "siteAddress"),
+      surveyWaived: formData.get("surveyWaived") === "on",
+      repeatLast: formData.get("repeatLast") === "on",
+      emailId: text(formData, "emailId") || null,
+    });
+    redirect(`/contracts/${result.contract.id}?notice=Trade job ${result.contract.number} opened`);
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function saveJobChannel(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    const id = text(formData, "contractId");
+    const channel = text(formData, "channel") === "trade" ? "TRADE" : "BELLWOODS";
+    await updateContract(actor, id, {
+      channel,
+      surveyWaived: formData.get("surveyWaived") === "on",
+      customerReference: text(formData, "customerReference"),
+    });
+    if (channel === "TRADE") {
+      const liveDeposit = await prisma.customerInvoice.findFirst({ where: { contractId: id, type: "DEPOSIT", status: { not: "VOID" } } });
+      if (!liveDeposit) await prisma.contract.update({ where: { id }, data: { depositSkipped: true, depositPercent: 0 } });
+    }
+    redirect(`/contracts/${id}?notice=Channel updated`);
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function saveEmailAssignment(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    const id = text(formData, "emailId");
+    await assignEmail(actor, id, { customerId: text(formData, "customerId") || null, contractId: text(formData, "contractId") || null });
+    redirect(`/inbox/${id}?notice=Email assigned`);
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function saveEmailEnquiry(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    const channel = text(formData, "channel") === "trade" ? "TRADE" : "BELLWOODS";
+    const enquiry = await enquiryFromEmail(actor, text(formData, "emailId"), channel);
+    redirect(`/enquiries/${enquiry.id}?notice=Enquiry created from email`);
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function markInboxRead(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    await markEmailRead(actor, text(formData, "emailId"), text(formData, "read") !== "false");
+    revalidatePath("/inbox");
+    return { ok: "Updated" };
   } catch (error) {
     return failure(error);
   }

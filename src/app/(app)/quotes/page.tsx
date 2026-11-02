@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { formatGbp } from "@/domain/money";
 import { formatUkDate } from "@/domain/dates";
+import { parseChannelFilter } from "@/domain/channel";
 import { prisma } from "@/lib/prisma";
+import { ChannelLinks } from "@/components/channel-links";
 import { PageHeader, Empty } from "@/components/ui";
 import { first, type SearchParams } from "@/lib/search";
 
 export const metadata = { title: "Quotes" };
 
 export default async function QuotesPage({ searchParams }: { searchParams: SearchParams }) {
-  const status = first((await searchParams).status) ?? "";
+  const params = await searchParams;
+  const status = first(params.status) ?? "";
+  const channel = parseChannelFilter(first(params.channel));
   const quotes = await prisma.quote.findMany({
-    where: status ? { status } : undefined,
+    where: { ...(status ? { status } : {}), ...(channel === "ALL" ? {} : { channel }) },
     include: { customer: true },
     orderBy: { createdAt: "desc" },
   });
@@ -20,7 +24,9 @@ export default async function QuotesPage({ searchParams }: { searchParams: Searc
         <a className="btn" href="/api/v1/exports/quotes" download>Export CSV</a>
         <Link className="btn btn-primary" href="/quotes/new">New quote</Link>
       </PageHeader>
+      <div className="mb-3"><ChannelLinks current={channel === "ALL" ? "all" : channel === "TRADE" ? "trade" : "bellwoods"} path="/quotes" extra={status ? { status } : {}} /></div>
       <form className="mb-4" method="get">
+        {channel !== "ALL" && <input type="hidden" name="channel" value={channel === "TRADE" ? "trade" : "bellwoods"} />}
         <select className="select max-w-[200px]" name="status" defaultValue={status}>
           <option value="">All</option>
           <option value="DRAFT">Draft</option>
@@ -35,7 +41,7 @@ export default async function QuotesPage({ searchParams }: { searchParams: Searc
           <thead><tr><th>Number</th><th>Customer</th><th>Status</th><th>Net</th><th>Gross</th><th>Created</th></tr></thead>
           <tbody>
             {quotes.map((quote) => (
-              <tr key={quote.id}>
+              <tr key={quote.id} className={quote.channel === "TRADE" ? "trade-row" : ""}>
                 <td><Link className="font-semibold text-forest" href={`/quotes/${quote.id}`}>{quote.number}</Link></td>
                 <td>{quote.customer.name}</td>
                 <td>{quote.status}</td>

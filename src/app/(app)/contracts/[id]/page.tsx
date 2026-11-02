@@ -4,6 +4,7 @@ import { ServiceError } from "@/domain/errors";
 import { formatGbp, formatMargin } from "@/domain/money";
 import { formatRate } from "@/domain/labour";
 import { formatUkDate, formatUkDateTime } from "@/domain/dates";
+import { BELLWOODS_COMPANY } from "@/domain/company";
 import { productLabel } from "@/domain/labels";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -25,7 +26,9 @@ import {
   uploadContractFile,
   removeLabour,
   saveAppointment,
+  saveJobChannel,
 } from "@/app/actions";
+import { ChannelField } from "@/components/channel-field";
 import { ActionForm, PageHeader, Submit } from "@/components/ui";
 import { LineEditor } from "@/components/line-editor";
 
@@ -49,12 +52,20 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const balance = view.salesValuePence - view.costing.salesNetPence;
   const currentIndex = view.stages.findIndex((stage) => stage.id === view.stageId);
 
+  const trade = view.channel === "TRADE";
   return (
-    <div className="space-y-6">
-      <PageHeader title={view.number} lede={`${view.customer.name} · ${view.stage.name}`}>
+    <div className={trade ? "trade-surface space-y-6 p-4" : "space-y-6"}>
+      <PageHeader title={view.number} lede={`${view.customer.name} · ${view.stage.name} · ${trade ? "Trade" : "Bellwoods"}`}>
         <Link className="btn" href={`/customers/${view.customerId}`}>Customer</Link>
         {view.quote && <Link className="btn" href={`/quotes/${view.quoteId}`}>{view.quote.number}</Link>}
       </PageHeader>
+      <ActionForm action={saveJobChannel} className="card flex flex-wrap items-end gap-3 p-4">
+        <input type="hidden" name="contractId" value={view.id} />
+        <ChannelField defaultValue={trade ? "trade" : "bellwoods"} />
+        <label className="field"><span>Customer reference</span><input className="input" name="customerReference" defaultValue={view.customerReference} /></label>
+        <label className="text-sm"><input className="mr-2" type="checkbox" name="surveyWaived" defaultChecked={view.surveyWaived} />Survey not required</label>
+        <Submit tone="dark">Save</Submit>
+      </ActionForm>
 
       <div className="stage-bar">
         {view.stages.map((stage, index) => {
@@ -72,7 +83,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         <h2 className="text-xl">Ready to order</h2>
         <ul className="mt-2 text-sm">
           <li>{view.readyToOrder.depositOk ? "Deposit paid or skipped." : "Deposit still outstanding."}</li>
-          <li>{view.readyToOrder.surveyOk ? "Survey uploaded." : "Survey not uploaded."}</li>
+          <li>{view.readyToOrder.surveyOk ? (view.surveyWaived && !view.surveyUploaded ? "Survey not required." : "Survey uploaded.") : "Survey not uploaded."}</li>
         </ul>
         {canWrite && (
           <ActionForm action={changeStage} className="mt-3 flex flex-wrap items-end gap-2">
@@ -255,7 +266,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
           <section className="card p-4">
             <h2 className="text-xl">Customer invoices</h2>
-            <p className="text-sm text-stone-600">Xero is not connected. Each invoice keeps a slot for a future Xero id.</p>
+            <p className="text-sm text-stone-600">Issued by {BELLWOODS_COMPANY.legalName}, VAT {BELLWOODS_COMPANY.vatNumber}. Trade and Bellwoods jobs share this company and one invoice sequence. Xero is not connected yet.</p>
             <table className="data mt-2">
               <thead><tr><th>Number</th><th>Type</th><th>Date</th><th>Net</th><th>Gross</th><th>Status</th><th></th></tr></thead>
               <tbody>

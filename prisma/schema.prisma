@@ -55,6 +55,7 @@ model Customer {
   email       String   @default("")
   phone       String   @default("")
   notes       String   @default("")
+  lastUsedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -64,6 +65,7 @@ model Customer {
   quotes       Quote[]
   contracts    Contract[]
   appointments Appointment[]
+  emails       InboundEmail[]
 
   @@index([type])
   @@index([name])
@@ -100,6 +102,7 @@ model Enquiry {
   source          String
   productInterest String
   status          String    @default("OPEN")
+  channel         String    @default("BELLWOODS")
   assignedToId    String?
   assignedTo      User?     @relation("EnquiryAssignee", fields: [assignedToId], references: [id])
   notes           String    @default("")
@@ -110,8 +113,10 @@ model Enquiry {
 
   quotes       Quote[]
   appointments Appointment[]
+  emails       InboundEmail[]
 
   @@index([status])
+  @@index([channel])
 }
 
 model Appointment {
@@ -144,6 +149,7 @@ model Quote {
   enquiryId   String?
   enquiry     Enquiry?  @relation(fields: [enquiryId], references: [id])
   status      String    @default("DRAFT")
+  channel     String    @default("BELLWOODS")
   validUntil  DateTime?
   notes       String    @default("")
   netPence    Int       @default(0)
@@ -193,6 +199,9 @@ model Contract {
   id              String    @id @default(cuid())
   number          String    @unique
   type            String
+  channel         String    @default("BELLWOODS")
+  jobType         String    @default("")
+  customerReference String  @default("")
   customerId      String
   customer        Customer  @relation(fields: [customerId], references: [id])
   quoteId         String?   @unique
@@ -204,6 +213,7 @@ model Contract {
   depositPercent  Int       @default(25)
   depositSkipped  Boolean   @default(false)
   surveyUploaded  Boolean   @default(false)
+  surveyWaived    Boolean   @default(false)
   fittersNeeded   Int       @default(2)
   fittersNotes    String    @default("")
   externalWorks   String    @default("")
@@ -224,8 +234,10 @@ model Contract {
   customerInvoices CustomerInvoice[]
   labourEntries    LabourEntry[]
   appointments     Appointment[]
+  emails           InboundEmail[]
 
   @@index([type])
+  @@index([channel])
   @@index([stageId])
   @@index([completedAt])
 }
@@ -393,10 +405,12 @@ model CustomerInvoice {
   netPence      Int
   vatPence      Int
   grossPence    Int
-  status        String    @default("UNPAID")
-  paidAt        DateTime?
-  xeroInvoiceId String?
-  xeroStatus    String?
+  status            String    @default("UNPAID")
+  paidAt            DateTime?
+  companyLegalName  String    @default("Bellwoods Windows and Doors Ltd")
+  companyVatNumber  String    @default("GB000000000")
+  xeroInvoiceId     String?
+  xeroStatus        String?
   createdAt     DateTime  @default(now())
 
   @@index([contractId])
@@ -432,6 +446,41 @@ model LabourEntry {
 
   @@index([contractId])
   @@index([workDate])
+}
+
+model InboundEmail {
+  id            String    @id @default(cuid())
+  fromName      String    @default("")
+  fromEmail     String
+  subject       String    @default("")
+  bodyText      String    @default("")
+  receivedAt    DateTime  @default(now())
+  messageId     String?   @unique
+  source        String    @default("API")
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  contractId    String?
+  contract      Contract? @relation(fields: [contractId], references: [id])
+  enquiryId     String?
+  enquiry       Enquiry?  @relation(fields: [enquiryId], references: [id])
+  matchNotes    String    @default("")
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+  attachments   InboundAttachment[]
+
+  @@index([readAt])
+  @@index([receivedAt])
+}
+
+model InboundAttachment {
+  id           String       @id @default(cuid())
+  emailId      String
+  email        InboundEmail @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  createdAt    DateTime     @default(now())
 }
 
 model Setting {
