@@ -237,6 +237,46 @@ export const routes: RouteDef[] = [
     handler: async ({ params, actor }) => ok(await customers.deleteContact(actor, params.id)),
   },
   {
+    method: "POST",
+    pattern: "/customers/:id/portal",
+    permission: "write",
+    summary: "Switch the trade customer portal on or off. Refused for Bellwoods retail.",
+    tags: ["Customers"],
+    handler: async ({ request, params, actor }) => {
+      const body = await readJson(request);
+      const { setCustomerPortalAccess } = await import("./portal");
+      return ok(await setCustomerPortalAccess(actor, params.id, Boolean(body.enabled)));
+    },
+  },
+  {
+    method: "GET",
+    pattern: "/customers/:id/portal",
+    permission: "read",
+    summary: "Read-only portal figures for a trade account. Refused for Bellwoods retail.",
+    tags: ["Customers"],
+    handler: async ({ params }) => {
+      const { portalAccountForCustomer } = await import("./portal");
+      return ok(await portalAccountForCustomer(params.id));
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/contacts/:id/portal",
+    permission: "write",
+    summary: "Enable a trade contact's portal login. Refused unless the account is trade.",
+    tags: ["Customers"],
+    handler: async ({ request, params, actor }) => {
+      const body = await readJson(request);
+      const { setContactPortalAccess } = await import("./portal");
+      const contact = await setContactPortalAccess(actor, params.id, {
+        enabled: Boolean(body.enabled),
+        password: str(body.password) || undefined,
+      });
+      const { portalPasswordHash: _hidden, ...safe } = contact;
+      return ok(safe);
+    },
+  },
+  {
     method: "GET",
     pattern: "/enquiries",
     permission: "read",

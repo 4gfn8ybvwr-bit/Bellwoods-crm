@@ -100,6 +100,12 @@ export async function updateCustomer(actor: Actor, id: string, input: Partial<Cu
   assertCustomerType(type);
   const companyName = input.companyName !== undefined ? input.companyName.trim() : existing.companyName;
   if (type === "TRADE" && !companyName) throw new ServiceError(400, "A trade customer needs a company name");
+  if (type !== "TRADE" && existing.portalEnabled) {
+    await prisma.contact.updateMany({
+      where: { customerId: id },
+      data: { portalEnabled: false, portalPasswordHash: "" },
+    });
+  }
   return prisma.customer.update({
     where: { id },
     data: {
@@ -109,6 +115,7 @@ export async function updateCustomer(actor: Actor, id: string, input: Partial<Cu
       email: input.email !== undefined ? input.email.trim() : existing.email,
       phone: input.phone !== undefined ? input.phone.trim() : existing.phone,
       notes: input.notes !== undefined ? input.notes.trim() : existing.notes,
+      portalEnabled: type === "TRADE" ? undefined : false,
     },
     include: { addresses: true, contacts: true },
   });

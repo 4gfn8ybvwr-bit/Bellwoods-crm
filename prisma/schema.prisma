@@ -56,6 +56,7 @@ model Customer {
   phone       String   @default("")
   notes       String   @default("")
   lastUsedAt  DateTime?
+  portalEnabled Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -93,6 +94,8 @@ model Contact {
   phone      String   @default("")
   role       String   @default("")
   isPrimary  Boolean  @default(false)
+  portalEnabled Boolean @default(false)
+  portalPasswordHash String @default("")
 }
 
 model Enquiry {
@@ -214,6 +217,8 @@ model Contract {
   depositSkipped  Boolean   @default(false)
   surveyUploaded  Boolean   @default(false)
   surveyWaived    Boolean   @default(false)
+  paymentDueDate  DateTime?
+  paymentDueSource String   @default("UNSET")
   fittersNeeded   Int       @default(2)
   fittersNotes    String    @default("")
   externalWorks   String    @default("")

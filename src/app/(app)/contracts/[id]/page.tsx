@@ -385,6 +385,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               <input type="hidden" name="contractId" value={view.id} />
               <label className="field"><span>Site</span><textarea className="textarea" name="siteAddress" defaultValue={view.siteAddress} /></label>
               <label className="field"><span>Agreed sale £</span><input className="input" name="salesValue" defaultValue={(view.salesValuePence / 100).toFixed(2)} /></label>
+              <label className="field"><span>Payment due</span><input className="input" name="paymentDue" placeholder="dd/mm/yyyy" defaultValue={view.paymentDueDate ? formatUkDate(view.paymentDueDate) : ""} /></label>
+              <p className="text-xs text-stone-500">Office date for now. Camden Direct will supply this later. It is not fetched from anywhere.</p>
               <label className="field"><span>Notes</span><textarea className="textarea" name="notes" defaultValue={view.notes} /></label>
               <Submit tone="dark">Save details</Submit>
             </ActionForm>

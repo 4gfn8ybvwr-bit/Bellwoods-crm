@@ -276,7 +276,10 @@ export async function listCustomers(q?: string, type?: string) {
     where,
     include: { addresses: true, contacts: true, _count: { select: { contracts: true, enquiries: true } } },
     orderBy: { name: "asc" },
-  });
+  }).then((rows) => rows.map((customer) => ({
+    ...customer,
+    contacts: customer.contacts.map(({ portalPasswordHash: _hidden, ...contact }) => contact),
+  })));
 }
 
 export async function getCustomer(id: string) {
@@ -291,5 +294,8 @@ export async function getCustomer(id: string) {
     },
   });
   if (!customer) throw new ServiceError(404, "Customer not found");
-  return customer;
+  return {
+    ...customer,
+    contacts: customer.contacts.map(({ portalPasswordHash: _hidden, ...contact }) => contact),
+  };
 }

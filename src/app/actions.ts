@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { ServiceError } from "@/domain/errors";
 import { poundsToPence } from "@/domain/money";
 import { parseDateInput, parseDateTimeInput } from "@/domain/dates";
-import { SESSION_COOKIE, sessionCookieOptions, signSession } from "@/lib/auth";
+import { authenticatePortalContact, setContactPortalAccess, setCustomerPortalAccess } from "@/server/portal";
+import { PORTAL_COOKIE, SESSION_COOKIE, sessionCookieOptions, signPortalSession, signSession } from "@/lib/auth";
 import type { ActionState } from "@/lib/action-state";
 import { prisma } from "@/lib/prisma";
 import { actorFromSession } from "@/server/actor";
@@ -332,6 +333,7 @@ export async function saveContractDetails(_prev: ActionState, formData: FormData
       fittersNeeded: text(formData, "fittersNeeded") ? Number(text(formData, "fittersNeeded")) : undefined,
       fittersNotes: text(formData, "fittersNotes"),
       externalWorks: text(formData, "externalWorks"),
+      paymentDueDate: formData.has("paymentDue") ? (text(formData, "paymentDue") ? dateOrThrow(text(formData, "paymentDue"), "Due date") : null) : undefined,
     });
     redirect(`/contracts/${id}?notice=Contract updated`);
   } catch (error) {
@@ -777,6 +779,54 @@ export async function markInboxRead(_prev: ActionState, formData: FormData): Pro
     await markEmailRead(actor, text(formData, "emailId"), text(formData, "read") !== "false");
     revalidatePath("/inbox");
     return { ok: "Updated" };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function portalSignIn(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const contact = await authenticatePortalContact(text(formData, "email"), String(formData.get("password") ?? ""));
+    const token = await signPortalSession({
+      contactId: contact.id,
+      customerId: contact.customerId,
+      name: contact.name,
+      kind: "portal",
+    });
+    const jar = await cookies();
+    jar.set(PORTAL_COOKIE, token, sessionCookieOptions());
+    redirect("/portal");
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function portalSignOut() {
+  const jar = await cookies();
+  jar.delete(PORTAL_COOKIE);
+  redirect("/portal/login");
+}
+
+export async function saveCustomerPortal(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    const id = text(formData, "customerId");
+    await setCustomerPortalAccess(actor, id, formData.get("enabled") === "on");
+    redirect(`/customers/${id}?notice=Portal access updated`);
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function saveContactPortal(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await actorFromSession();
+    const customerId = text(formData, "customerId");
+    await setContactPortalAccess(actor, text(formData, "contactId"), {
+      enabled: formData.get("enabled") === "on",
+      password: text(formData, "password") || undefined,
+    });
+    redirect(`/customers/${customerId}?notice=Contact portal updated`);
   } catch (error) {
     return failure(error);
   }

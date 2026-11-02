@@ -71,6 +71,14 @@ Orders and enquiries that arrive by email show under Inbox, with an unread count
 
 Post mail with the API (`POST /api/v1/emails`) or the webhook `POST /api/inbound-email` using header `x-bellwoods-inbound-secret`. IMAP and Microsoft 365 polling run from `POST /api/v1/emails/poll` when `IMAP_*` or `GRAPH_*` is set in the environment. No real mailbox credentials are stored in the repo. The seeded inbox has fictional messages, including one unmatched.
 
+### Trade customer portal
+
+**Requirement.** Seb wants trade customers to sign in and chase money: job amounts, due dates, what is overdue, and remakes. This portal is for **trade customers only**. Bellwoods retail customers must never be given a login or shown portal figures. That rule is enforced in the service and the API, not only on the screen. A retail customer with the flag forced on still cannot read portal data.
+
+Due dates are an office field (`paymentDueSource` is `MANUAL` or `UNSET`). `CAMDEN_DIRECT` is reserved for a later read from Camden Direct and is rejected if anything tries to write it now. There is no Camden scraping or connection, and the portal does not send email.
+
+Demo login: `adele@northshore.example` / `Trade-portal-2026` at `/portal/login` (Harbour’s Chris uses the same password). TC23305 has an office due date, an unpaid invoice and a remake so the portal can be tried. Camden Direct is not connected.
+
 ### A known completed job
 
 `BW23290` (Ellen Frost, Tynemouth) is in the previous financial year:

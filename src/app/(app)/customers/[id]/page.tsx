@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { formatGbp } from "@/domain/money";
 import { getCustomer } from "@/server/queries";
-import { saveAddress, saveContact } from "@/app/actions";
+import { saveAddress, saveContact, saveContactPortal, saveCustomerPortal } from "@/app/actions";
 import { ActionForm, PageHeader, Submit } from "@/components/ui";
 import { CustomerFields } from "@/components/forms";
 
@@ -59,6 +59,26 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </ActionForm>
         </section>
       </div>
+      {customer.type === "TRADE" && (
+        <section className="trade-surface space-y-3 p-4">
+          <h2 className="text-xl">Customer portal</h2>
+          <p className="text-sm">Trade accounts only. Bellwoods retail customers cannot be switched on, in the office screen or the API. Signing in does not send an email.</p>
+          <ActionForm action={saveCustomerPortal} className="flex flex-wrap items-center gap-3">
+            <input type="hidden" name="customerId" value={customer.id} />
+            <label className="text-sm"><input className="mr-2" type="checkbox" name="enabled" defaultChecked={customer.portalEnabled} />Allow this account into the portal</label>
+            <Submit tone="dark">Save</Submit>
+          </ActionForm>
+          {customer.contacts.map((contact) => (
+            <ActionForm key={contact.id} action={saveContactPortal} className="grid gap-2 rounded-md border border-sky-200 bg-white p-3 sm:grid-cols-[1fr_1fr_auto]">
+              <input type="hidden" name="customerId" value={customer.id} />
+              <input type="hidden" name="contactId" value={contact.id} />
+              <label className="text-sm"><input className="mr-2" type="checkbox" name="enabled" defaultChecked={contact.portalEnabled} />{contact.name || contact.email} can sign in</label>
+              <input className="input" name="password" type="password" placeholder="Password, at least 8 characters" autoComplete="new-password" />
+              <Submit>Save login</Submit>
+            </ActionForm>
+          ))}
+        </section>
+      )}
       <section className="card p-4">
         <h2 className="text-xl">Work</h2>
         <ul className="mt-2 text-sm">

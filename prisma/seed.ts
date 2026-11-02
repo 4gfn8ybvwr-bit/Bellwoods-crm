@@ -427,7 +427,29 @@ async function main() {
     soldAt: at(2026, 10, 22),
     lines: [{ productType: "WINDOW", description: "Block B trade package", specification: "Anthracite", unitPricePence: 1125000 }],
   });
-  await prisma.contract.update({ where: { id: northJob.id }, data: { fittersNotes: "Trade account, deposit waived by David.", externalWorks: "None. Openings already formed.", fittersNeeded: 3 } });
+  await prisma.contract.update({
+    where: { id: northJob.id },
+    data: {
+      fittersNotes: "Trade account, deposit waived by David.",
+      externalWorks: "None. Openings already formed.",
+      fittersNeeded: 3,
+      paymentDueDate: at(2026, 10, 15),
+      paymentDueSource: "MANUAL",
+    },
+  });
+  await invoice({ number: "INV-3190", contractId: northJob.id, type: "OTHER", date: at(2026, 10, 1), net: 240000, status: "UNPAID" });
+  await po({
+    number: "PO-5095",
+    contractId: northJob.id,
+    supplierId: camden.id,
+    status: "SENT",
+    net: 0,
+    description: "Remake sash",
+    reference: "CG-remake-NS",
+    remake: true,
+    reason: "Transit damage on one sash",
+    orderedAt: at(2026, 10, 24),
+  });
 
   const samuelJob = await contract({
     number: "BW23308",
@@ -554,8 +576,13 @@ async function main() {
   await prisma.enquiry.create({ data: { customerId: margaret.id, source: "Website", productInterest: "Front and rear windows", status: "OPEN", assignedToId: sarah.id, notes: "Asked about a bay in the lounge." } });
   await prisma.enquiry.create({ data: { customerId: helenPark.id, source: "Phone", productInterest: "Composite front door", status: "OPEN", assignedToId: sarah.id } });
   await prisma.enquiry.create({ data: { customerId: harbour.id, source: "Trade account", productInterest: "Plot 8 windows", status: "OPEN", channel: "TRADE", assignedToId: sarah.id, notes: "Second plot after TC23291." } });
-  await prisma.customer.update({ where: { id: harbour.id }, data: { lastUsedAt: at(2026, 10, 30, 9) } });
-  await prisma.customer.update({ where: { id: northshore.id }, data: { lastUsedAt: at(2026, 10, 28, 15) } });
+  await prisma.customer.update({ where: { id: harbour.id }, data: { lastUsedAt: at(2026, 10, 30, 9), portalEnabled: true } });
+  await prisma.customer.update({ where: { id: northshore.id }, data: { lastUsedAt: at(2026, 10, 28, 15), portalEnabled: true } });
+  const portalPassword = await bcrypt.hash("Trade-portal-2026", 10);
+  for (const email of ["chris@harbour-joinery.example", "adele@northshore.example"]) {
+    const contact = await prisma.contact.findFirst({ where: { email } });
+    if (contact) await prisma.contact.update({ where: { id: contact.id }, data: { portalEnabled: true, portalPasswordHash: portalPassword } });
+  }
 
   const iainJob = await contract({
     number: "BW23317",
@@ -669,7 +696,7 @@ async function main() {
   console.log("Seeded Bellwoods CRM.");
   console.log(`Sign in: david@bellwoods.example / ${PASSWORD}`);
   console.log(`Read-write API key: ${READ_WRITE_KEY}`);
-  console.log(`Read-only API key: ${READ_ONLY_KEY}`);
+  console.log(`Trade portal: adele@northshore.example / Trade-portal-2026`);
 }
 
 main()

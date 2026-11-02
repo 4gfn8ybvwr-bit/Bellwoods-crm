@@ -10,6 +10,7 @@ import { recordActivity } from "./activity";
 import { emitEvent } from "./webhooks";
 import { getSettings } from "./settings";
 import { channelFromType, type Channel } from "@/domain/channel";
+import { paymentDueSourceFor } from "@/domain/portal";
 import { formatContractNumber, takeNext } from "./numbers";
 import { formatAddress } from "./customers";
 import { insertCustomerInvoice } from "./finance";
@@ -191,6 +192,7 @@ export async function updateContract(
     customerReference?: string;
     channel?: Channel;
     jobType?: string;
+    paymentDueDate?: Date | null;
   },
 ) {
   allow(actor, "write");
@@ -220,6 +222,8 @@ export async function updateContract(
       customerReference: input.customerReference !== undefined ? input.customerReference.trim() : undefined,
       channel: input.channel,
       jobType: input.jobType !== undefined ? input.jobType.trim() : undefined,
+      paymentDueDate: input.paymentDueDate,
+      paymentDueSource: input.paymentDueDate === undefined ? undefined : paymentDueSourceFor(input.paymentDueDate),
     },
   });
   if (input.surveyUploaded != null) {
